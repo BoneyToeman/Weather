@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atmosphere - Weather Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Weather & UI Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        glass: {
+                            100: 'rgba(255, 255, 255, 0.1)',
+                            200: 'rgba(255, 255, 255, 0.15)',
+                            300: 'rgba(255, 255, 255, 0.25)',
+                            border: 'rgba(255, 255, 255, 0.2)',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles for animations & glassmorphism effects */
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%);
+            min-height: 100vh;
+            color: #ffffff;
+            transition: background 1s ease;
+        }
+
+        /* Dynamic background gradients based on weather */
+        body.weather-clear {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 40%, #0f172a 100%);
+        }
+        body.weather-clouds {
+            background: linear-gradient(135deg, #334155 0%, #1e293b 50%, #0f172a 100%);
+        }
+        body.weather-rain {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0369a1 100%);
+        }
+        body.weather-snow {
+            background: linear-gradient(135deg, #334155 0%, #475569 50%, #1e293b 100%);
+        }
+        body.weather-thunder {
+            background: linear-gradient(135deg, #1e1b4b 0%, #311042 50%, #0f172a 100%);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+        }
+
+        .glass-input {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .glass-input:focus {
+            background: rgba(255, 255, 255, 0.18);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* Weather Pulse Animation */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .animate-float {
+            animation: float 4s ease-in-out infinite;
+        }
+
+        /* Toggle switch styling */
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+        .toggle-checkbox:checked + .toggle-label .toggle-dot {
+            transform: translateX(100%);
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen p-3 sm:p-4 md:p-8 transition-colors duration-700">
+
+    <!-- Notification Toast Container -->
+    <div id="toast" class="fixed top-3 right-3 left-3 sm:left-auto sm:top-5 sm:right-5 z-50 transform translate-y-[-150%] transition-transform duration-300 ease-out glass-card px-5 py-3.5 rounded-xl flex items-center space-x-3 text-red-200 border-red-500/30 text-sm">
+        <i class="fa-solid fa-circle-exclamation text-lg"></i>
+        <span id="toast-message" class="font-medium">City not found.</span>
+    </div>
+
+    <!-- "Will you be cold?" Modal Overlay -->
+    <div id="cold-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="glass-card rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center space-y-5 transform scale-90 transition-transform duration-300 id-modal-box">
+            <div class="w-16 h-16 mx-auto bg-cyan-500/20 rounded-full flex items-center justify-center text-cyan-300 text-3xl">
+                <i class="fa-solid fa-snowflake animate-bounce"></i>
+            </div>
+            <div>
+                <h3 class="text-xs uppercase tracking-widest text-cyan-200 font-semibold mb-1">Cold Assessment</h3>
+                <p class="text-4xl font-extrabold text-white tracking-tight">Yes</p>
+                <p class="text-sm text-white/70 mt-2">Always take a jacket, just in case!</p>
+            </div>
+            <button 
+                onclick="closeColdModal()" 
+                class="w-full min-h-[44px] py-3 px-4 bg-white/20 hover:bg-white/30 active:scale-95 text-white font-semibold rounded-xl transition duration-150 shadow-md flex items-center justify-center"
+            >
+                Got it
+            </button>
+        </div>
+    </div>
+
+    <div class="max-w-5xl mx-auto w-full flex-grow flex flex-col space-y-4 sm:space-y-6">
+        
+        <!-- Header & Search Controls -->
+        <header class="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 glass-card p-4 sm:p-6 rounded-2xl">
+            <!-- Brand & Location Name -->
+            <div class="flex items-center justify-between md:justify-start space-x-3">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2.5 sm:p-3 bg-white/10 rounded-xl">
+                        <i class="fa-solid fa-cloud-sun text-amber-300 text-xl sm:text-2xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white/90">Atmosphere</h1>
+                        <p class="text-[11px] sm:text-xs text-white/60">Live Weather & Forecasts</p>
+                    </div>
+                </div>
+
+                <!-- Mobile Cold Question Button (Top Bar Mobile Shortcut) -->
+                <button 
+                    onclick="openColdModal()" 
+                    class="md:hidden min-h-[44px] min-w-[44px] px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/30 text-cyan-200 rounded-xl text-xs font-medium flex items-center space-x-1.5 active:scale-95 transition"
+                    aria-label="Will you be cold?"
+                >
+                    <i class="fa-solid fa-temperature-low"></i>
+                    <span class="text-xs">Cold?</span>
+                </button>
+            </div>
+
+            <!-- Search Form, Cold Button Desktop, and Unit Toggle -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full md:w-auto">
+                <form id="search-form" class="relative flex-grow sm:w-72">
+                    <input 
+                        type="text" 
+                        id="search-input"
+                        placeholder="Search city..." 
+                        class="w-full glass-input text-white placeholder-white/50 text-sm rounded-xl pl-10 pr-4 min-h-[44px] focus:outline-none transition"
+                        required
+                    >
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-white/50 text-sm"></i>
+                    <button type="submit" class="hidden">Search</button>
+                </form>
+
+                <div class="flex items-center gap-2">
+                    <!-- Desktop Cold Question Button -->
+                    <button 
+                        onclick="openColdModal()" 
+                        class="hidden md:flex min-h-[44px] px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/30 text-cyan-200 rounded-xl text-xs font-medium items-center space-x-2 active:scale-95 transition whitespace-nowrap"
+                    >
+                        <i class="fa-solid fa-temperature-low"></i>
+                        <span>Will you be cold?</span>
+                    </button>
+
+                    <!-- Temperature Unit Toggle Buttons -->
+                    <div class="flex items-center justify-center glass-input p-1 rounded-xl w-full sm:w-auto min-h-[44px]">
+                        <button 
+                            id="unit-c" 
+                            class="flex-1 sm:flex-none min-h-[36px] px-4 py-1.5 rounded-lg text-sm font-medium transition duration-200 bg-white/20 text-white shadow-sm"
+                            onclick="setUnit('celsius')"
+                        >
+                            °C
+                        </button>
+                        <button 
+                            id="unit-f" 
+                            class="flex-1 sm:flex-none min-h-[36px] px-4 py-1.5 rounded-lg text-sm font-medium transition duration-200 text-white/60 hover:text-white"
+                            onclick="setUnit('fahrenheit')"
+                        >
+                            °F
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Display Content (Loading State / Weather Content) -->
+        <main class="flex-grow flex flex-col space-y-4 sm:space-y-6">
+            
+            <!-- Loading Spinner Container -->
+            <div id="loader" class="glass-card rounded-2xl p-8 sm:p-12 flex flex-col items-center justify-center space-y-4">
+                <i class="fa-solid fa-spinner fa-spin text-3xl sm:text-4xl text-white/80"></i>
+                <p class="text-sm font-medium text-white/70">Fetching live weather data...</p>
+            </div>
+
+            <!-- Main Weather Layout (Hidden by default until data loads) -->
+            <div id="weather-content" class="hidden flex-col space-y-4 sm:space-y-6">
+                
+                <!-- Hero Weather Card -->
+                <div class="glass-card rounded-3xl p-5 sm:p-8 flex flex-col md:flex-row justify-between items-center relative overflow-hidden">
+                    <div class="flex flex-col space-y-1.5 sm:space-y-2 text-center md:text-left z-10 w-full md:w-auto">
+                        <div class="inline-flex items-center justify-center md:justify-start space-x-2">
+                            <span id="city-title" class="text-2xl sm:text-4xl font-extrabold tracking-tight">Orlando</span>
+                            <span id="country-tag" class="text-xs sm:text-sm px-2.5 py-0.5 rounded-full bg-white/20 font-semibold text-white/80">US</span>
+                        </div>
+                        <p id="current-date" class="text-xs sm:text-sm text-white/70">Wednesday, 4 Nov</p>
+                        
+                        <!-- Temperature Display -->
+                        <div class="pt-2 sm:pt-4 flex items-baseline justify-center md:justify-start space-x-1.5 sm:space-x-2">
+                            <span id="temp-display" class="text-5xl sm:text-7xl font-bold tracking-tighter">75</span>
+                            <span id="unit-symbol" class="text-2xl sm:text-3xl font-light text-white/80">°F</span>
+                        </div>
+                        <p id="weather-condition" class="text-base sm:text-lg font-medium text-amber-200 tracking-wide">Partly Cloudy</p>
+                    </div>
+
+                    <!-- Hero Animated Weather Icon -->
+                    <div class="my-4 md:my-0 flex items-center justify-center animate-float z-10">
+                        <i id="hero-weather-icon" class="fa-solid fa-cloud-sun text-7xl sm:text-9xl text-amber-300 drop-shadow-lg"></i>
+                    </div>
+
+                    <!-- Mobile "Will you be cold?" Banner Action -->
+                    <div class="w-full md:hidden mt-2 pt-3 border-t border-white/10 z-10">
+                        <button 
+                            onclick="openColdModal()" 
+                            class="w-full min-h-[44px] py-2.5 px-4 bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-98 border border-cyan-400/30 text-cyan-100 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center space-x-2 transition"
+                        >
+                            <i class="fa-solid fa-temperature-low"></i>
+                            <span>Will you be cold?</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Detail Highlights Grid -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                    <!-- Humidity Card -->
+                    <div class="glass-card p-4 sm:p-5 rounded-2xl flex items-center space-x-3 sm:space-x-4">
+                        <div class="p-2.5 sm:p-3 bg-blue-500/20 rounded-xl text-blue-300 text-lg sm:text-xl">
+                            <i class="fa-solid fa-droplet"></i>
+                        </div>
+                        <div>
+                            <p class="text-[11px] sm:text-xs text-white/60 font-medium">Humidity</p>
+                            <p id="humidity-value" class="text-lg sm:text-xl font-bold text-white/90">65%</p>
+                        </div>
+                    </div>
+
+                    <!-- Wind Speed Card -->
+                    <div class="glass-card p-4 sm:p-5 rounded-2xl flex items-center space-x-3 sm:space-x-4">
+                        <div class="p-2.5 sm:p-3 bg-teal-500/20 rounded-xl text-teal-300 text-lg sm:text-xl">
+                            <i class="fa-solid fa-wind"></i>
+                        </div>
+                        <div>
+                            <p class="text-[11px] sm:text-xs text-white/60 font-medium">Wind Speed</p>
+                            <p id="wind-value" class="text-lg sm:text-xl font-bold text-white/90">12 mph</p>
+                        </div>
+                    </div>
+
+                    <!-- Apparent Temp / Feels Like -->
+                    <div class="glass-card p-4 sm:p-5 rounded-2xl flex items-center space-x-3 sm:space-x-4">
+                        <div class="p-2.5 sm:p-3 bg-orange-500/20 rounded-xl text-orange-300 text-lg sm:text-xl">
+                            <i class="fa-solid fa-temperature-half"></i>
+                        </div>
+                        <div>
+                            <p class="text-[11px] sm:text-xs text-white/60 font-medium">Feels Like</p>
+                            <p id="feels-like-value" class="text-lg sm:text-xl font-bold text-white/90">76°F</p>
+                        </div>
+                    </div>
+
+                    <!-- Precipitation / Rain Risk -->
+                    <div class="glass-card p-4 sm:p-5 rounded-2xl flex items-center space-x-3 sm:space-x-4">
+                        <div class="p-2.5 sm:p-3 bg-indigo-500/20 rounded-xl text-indigo-300 text-lg sm:text-xl">
+                            <i class="fa-solid fa-cloud-rain"></i>
+                        </div>
+                        <div>
+                            <p class="text-[11px] sm:text-xs text-white/60 font-medium">Precipitation</p>
+                            <p id="precip-value" class="text-lg sm:text-xl font-bold text-white/90">0 mm</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5-Day Daily Forecast Section -->
+                <div class="glass-card rounded-2xl p-4 sm:p-6">
+                    <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-white/90 flex items-center space-x-2">
+                        <i class="fa-solid fa-calendar-days text-amber-300"></i>
+                        <span>5-Day Forecast</span>
+                    </h3>
+
+                    <!-- Horizontal scroll on small mobile screens -->
+                    <div id="forecast-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-3">
+                        <!-- Forecast items generated via JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="text-center text-[11px] sm:text-xs text-white/50 py-3">
+            <p>Powered by Open-Meteo Free API • Weather Overlay Interface</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // State Management
+        let currentCity = "Orlando";
+        let currentUnit = "fahrenheit"; // "celsius" or "fahrenheit"
+        let currentCoords = { lat: 28.5383, lon: -81.3792, name: "Orlando", country: "United States" };
+
+        // DOM Element Selectors
+        const searchForm = document.getElementById('search-form');
+        const searchInput = document.getElementById('search-input');
+        const loader = document.getElementById('loader');
+        const weatherContent = document.getElementById('weather-content');
+        const unitCBtn = document.getElementById('unit-c');
+        const unitFBtn = document.getElementById('unit-f');
+
+        // WMO Code Mapping to Icons, Descriptions, and Background Themes
+        const weatherCodeMap = {
+            0: { desc: "Clear Sky", icon: "fa-sun", theme: "weather-clear", color: "text-amber-300" },
+            1: { desc: "Mainly Clear", icon: "fa-cloud-sun", theme: "weather-clear", color: "text-amber-200" },
+            2: { desc: "Partly Cloudy", icon: "fa-cloud-sun", theme: "weather-clouds", color: "text-gray-200" },
+            3: { desc: "Overcast", icon: "fa-cloud", theme: "weather-clouds", color: "text-gray-300" },
+            45: { desc: "Foggy", icon: "fa-smog", theme: "weather-clouds", color: "text-gray-400" },
+            48: { desc: "Depositing Rime Fog", icon: "fa-smog", theme: "weather-clouds", color: "text-gray-400" },
+            51: { desc: "Light Drizzle", icon: "fa-cloud-rain", theme: "weather-rain", color: "text-blue-300" },
+            53: { desc: "Moderate Drizzle", icon: "fa-cloud-rain", theme: "weather-rain", color: "text-blue-300" },
+            55: { desc: "Dense Drizzle", icon: "fa-cloud-showers-heavy", theme: "weather-rain", color: "text-blue-400" },
+            61: { desc: "Slight Rain", icon: "fa-cloud-rain", theme: "weather-rain", color: "text-blue-300" },
+            63: { desc: "Moderate Rain", icon: "fa-cloud-showers-heavy", theme: "weather-rain", color: "text-blue-400" },
+            65: { desc: "Heavy Rain", icon: "fa-cloud-showers-heavy", theme: "weather-rain", color: "text-blue-500" },
+            71: { desc: "Light Snow", icon: "fa-snowflake", theme: "weather-snow", color: "text-cyan-200" },
+            73: { desc: "Moderate Snow", icon: "fa-snowflake", theme: "weather-snow", color: "text-cyan-200" },
+            75: { desc: "Heavy Snow", icon: "fa-snowflake", theme: "weather-snow", color: "text-white" },
+            80: { desc: "Rain Showers", icon: "fa-cloud-sun-rain", theme: "weather-rain", color: "text-blue-300" },
+            95: { desc: "Thunderstorm", icon: "fa-cloud-bolt", theme: "weather-thunder", color: "text-yellow-400" },
+            96: { desc: "Thunderstorm with Hail", icon: "fa-cloud-bolt", theme: "weather-thunder", color: "text-yellow-400" }
+        };
+
+        // Initialize App on Page Load
+        window.addEventListener('DOMContentLoaded', () => {
+            fetchWeatherData(currentCoords.lat, currentCoords.lon, currentCoords.name, currentCoords.country);
+        });
+
+        // Search Form Submission Handler
+        searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = searchInput.value.trim();
+            if (!query) return;
+
+            showLoader(true);
+            const coords = await geocodeCity(query);
+            if (coords) {
+                currentCoords = coords;
+                await fetchWeatherData(coords.lat, coords.lon, coords.name, coords.country);
+                searchInput.value = '';
+            } else {
+                showLoader(false);
+                showToast(`City "${query}" not found. Try another city.`);
+            }
+        });
+
+        // Toggle Temperature Unit
+        function setUnit(unit) {
+            if (currentUnit === unit) return;
+            currentUnit = unit;
+
+            // Update UI Button Styles
+            if (unit === 'celsius') {
+                unitCBtn.className = "flex-1 sm:flex-none min-h-[36px] px-4 py-1.5 rounded-lg text-sm font-medium transition duration-200 bg-white/20 text-white shadow-sm";
+                unitFBtn.className = "flex-1 sm:flex-none min-h-[36px] px-4 py-1.5 rounded-lg text-sm font-medium transition duration-200 text-white/60 hover:text-white";
+            } else {
+                unitFBtn.className = "flex-1 sm:flex-none min-h-[36px] px-4 py-1.5 rounded-lg text-sm font-medium transition duration-200 bg-white/20 text-white shadow-sm";
+                unitCBtn.className = "flex-1 sm:flex-none min-h-[36px] px-4 py-1.5 rounded-lg text-sm font-medium transition duration-200 text-white/60 hover:text-white";
+            }
+
+            // Re-fetch weather data with updated units
+            fetchWeatherData(currentCoords.lat, currentCoords.lon, currentCoords.name, currentCoords.country);
+        }
+
+        // Modal Handlers for "Will you be cold?"
+        function openColdModal() {
+            const modal = document.getElementById('cold-modal');
+            const modalBox = modal.querySelector('.id-modal-box');
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            modalBox.classList.remove('scale-90');
+            modalBox.classList.add('scale-100');
+        }
+
+        function closeColdModal() {
+            const modal = document.getElementById('cold-modal');
+            const modalBox = modal.querySelector('.id-modal-box');
+            modalBox.classList.remove('scale-100');
+            modalBox.classList.add('scale-90');
+            modal.classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        // Fetch City Coordinates from Open-Meteo Geocoding API
+        async function geocodeCity(cityName) {
+            try {
+                const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=en&format=json`;
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (!data.results || data.results.length === 0) {
+                    return null;
+                }
+
+                const res0 = data.results[0];
+                return {
+                    lat: res0.latitude,
+                    lon: res0.longitude,
+                    name: res0.name,
+                    country: res0.country || res0.country_code || ""
+                };
+            } catch (err) {
+                console.error("Geocoding error:", err);
+                return null;
+            }
+        }
+
+        // Fetch Live Weather & Forecast Data
+        async function fetchWeatherData(lat, lon, cityName, country) {
+            showLoader(true);
+            try {
+                const tempUnitParam = currentUnit === 'fahrenheit' ? 'fahrenheit' : 'celsius';
+                const windSpeedParam = currentUnit === 'fahrenheit' ? 'mph' : 'kmh';
+                
+                const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&temperature_unit=${tempUnitParam}&wind_speed_unit=${windSpeedParam}&timezone=auto`;
+
+                const res = await fetch(weatherUrl);
+                const data = await res.json();
+
+                renderWeatherUI(data, cityName, country);
+                showLoader(false);
+            } catch (err) {
+                console.error("Weather fetch error:", err);
+                showToast("Failed to fetch weather data. Please check your internet connection.");
+                showLoader(false);
+            }
+        }
+
+        // Update UI Elements with API Data
+        function renderWeatherUI(data, cityName, country) {
+            const current = data.current;
+            const daily = data.daily;
+
+            // City & Date
+            document.getElementById('city-title').textContent = cityName;
+            document.getElementById('country-tag').textContent = country ? country : "—";
+            
+            const now = new Date();
+            const dateOptions = { weekday: 'long', day: 'numeric', month: 'short' };
+            document.getElementById('current-date').textContent = now.toLocaleDateString('en-US', dateOptions);
+
+            // Temperature & Condition
+            const tempVal = Math.round(current.temperature_2m);
+            const feelsLikeVal = Math.round(current.apparent_temperature);
+            const weatherCode = current.weather_code;
+            const weatherInfo = weatherCodeMap[weatherCode] || { desc: "Clear", icon: "fa-sun", theme: "weather-clear", color: "text-amber-300" };
+
+            document.getElementById('temp-display').textContent = tempVal;
+            document.getElementById('unit-symbol').textContent = currentUnit === 'fahrenheit' ? '°F' : '°C';
+            document.getElementById('weather-condition').textContent = weatherInfo.desc;
+            document.getElementById('feels-like-value').textContent = `${feelsLikeVal}${currentUnit === 'fahrenheit' ? '°F' : '°C'}`;
+
+            // Hero Weather Icon & Theme Update
+            const heroIcon = document.getElementById('hero-weather-icon');
+            heroIcon.className = `fa-solid ${weatherInfo.icon} text-7xl sm:text-9xl ${weatherInfo.color} drop-shadow-lg`;
+            document.body.className = `flex flex-col min-h-screen p-3 sm:p-4 md:p-8 transition-colors duration-700 ${weatherInfo.theme}`;
+
+            // Details
+            document.getElementById('humidity-value').textContent = `${current.relative_humidity_2m}%`;
+            document.getElementById('wind-value').textContent = `${Math.round(current.wind_speed_10m)} ${currentUnit === 'fahrenheit' ? 'mph' : 'km/h'}`;
+            document.getElementById('precip-value').textContent = `${current.precipitation} mm`;
+
+            // Daily 5-Day Forecast Rendering
+            const forecastGrid = document.getElementById('forecast-grid');
+            forecastGrid.innerHTML = '';
+
+            for (let i = 0; i < 5; i++) {
+                if (!daily.time[i]) break;
+
+                const forecastDate = new Date(daily.time[i] + 'T00:00:00');
+                const dayName = i === 0 ? 'Today' : forecastDate.toLocaleDateString('en-US', { weekday: 'short' });
+                const code = daily.weather_code[i];
+                const info = weatherCodeMap[code] || { desc: "Clear", icon: "fa-sun", color: "text-amber-300" };
+                const maxTemp = Math.round(daily.temperature_2m_max[i]);
+                const minTemp = Math.round(daily.temperature_2m_min[i]);
+
+                const cardHtml = `
+                    <div class="glass-card p-4 rounded-xl flex flex-col items-center justify-between text-center space-y-2 hover:bg-white/20 transition">
+                        <span class="text-xs font-semibold text-white/80">${dayName}</span>
+                        <i class="fa-solid ${info.icon} text-2xl my-1 ${info.color}"></i>
+                        <span class="text-xs text-white/60 font-medium">${info.desc}</span>
+                        <div class="text-sm font-bold pt-1">
+                            <span>${maxTemp}°</span>
+                            <span class="text-xs font-normal text-white/50 ml-1">${minTemp}°</span>
+                        </div>
+                    </div>
+                `;
+                forecastGrid.insertAdjacentHTML('beforeend', cardHtml);
+            }
+        }
+
+        // Toggle Loading Display
+        function showLoader(isLoading) {
+            if (isLoading) {
+                loader.classList.remove('hidden');
+                loader.classList.add('flex');
+                weatherContent.classList.add('hidden');
+                weatherContent.classList.remove('flex');
+            } else {
+                loader.classList.add('hidden');
+                loader.classList.remove('flex');
+                weatherContent.classList.remove('hidden');
+                weatherContent.classList.add('flex');
+            }
+        }
+
+        // Show Toast Notification
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.textContent = msg;
+            toast.classList.remove('translate-y-[-150%]');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-[-150%]');
+            }, 3500);
+        }
+    </script>
+</body>
+</html>
